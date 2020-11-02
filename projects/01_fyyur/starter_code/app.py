@@ -12,6 +12,8 @@ import logging
 from logging import Formatter, FileHandler
 from flask_wtf import Form
 from forms import *
+import sys
+
 #----------------------------------------------------------------------------#
 # App Config.
 #----------------------------------------------------------------------------#
@@ -20,6 +22,7 @@ app = Flask(__name__)
 moment = Moment(app)
 app.config.from_object('config')
 db = SQLAlchemy(app)
+migrate=Migrate(app,db)
 
 # TODO: connect to a local postgresql database
 
@@ -31,13 +34,45 @@ class Venue(db.Model):
     __tablename__ = 'Venue'
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String)
-    city = db.Column(db.String(120))
-    state = db.Column(db.String(120))
-    address = db.Column(db.String(120))
-    phone = db.Column(db.String(120))
+    name = db.Column(db.String,nullable=False)
+    city = db.Column(db.String(120),nullable=False)
+    state = db.Column(db.String(120),nullable=False)
+    address = db.Column(db.String(120),nullable=False)
+    phone = db.Column(db.String(120),nullalbe=False)
     image_link = db.Column(db.String(500))
     facebook_link = db.Column(db.String(120))
+
+    genres = db.Column(db.String(120), nullable=False)
+    website=db.Column(db.String(200))
+    seeking_talent = db.Column(db.Boolean, nullable=False)
+    seeking_description = db.Column(db.String(500), nullable=False)
+    shows = db.relationship('Show', backref='venue', lazy=True)
+
+    def __repr__(self):
+      return f'<Venue id: {self.id}, name: {self.name}>'
+
+    def json(self):
+      upcoming_shows = self.show.filter(Show.start_time > datetime.now()).all()
+      past_shows = self.show.filter(Show.start_time < datetime.now()).all()
+
+      return {
+        'id': self.id,
+        'name': self.name,
+        'city': self.city,
+        'state': self.state,
+        'address': self.address,
+        'phone': self.phone,
+        'image_link': self.image_link,
+        'facebook_link': self.facebook_link,
+        'genres':  json.loads(self.genres),
+        'website': self.website,
+        'seeking_talent': self.seeking_talent,
+        'seeking_description': self.seeking_description,
+        'upcoming_shows_count': len(upcoming_shows),
+        'upcoming_shows': upcoming_shows,
+        'past_shows_count': len(past_shows),
+        'past_shows': past_shows,
+      }
 
     # TODO: implement any missing fields, as a database migration using Flask-Migrate
 
@@ -45,17 +80,58 @@ class Artist(db.Model):
     __tablename__ = 'Artist'
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String)
-    city = db.Column(db.String(120))
-    state = db.Column(db.String(120))
-    phone = db.Column(db.String(120))
-    genres = db.Column(db.String(120))
+    name = db.Column(db.String,nullable=False)
+    city = db.Column(db.String(120),nullable=False)
+    state = db.Column(db.String(120),nullable=False)
+    phone = db.Column(db.String(120),nullable=False)
+    genres = db.Column(db.String(120),nullable=False)
     image_link = db.Column(db.String(500))
     facebook_link = db.Column(db.String(120))
+    website=db.Column(db.String(200))
+    seeking_venue = db.Column(db.Boolean, nullable=False)
+    seeking_description = db.Column(db.String(500))
+    shows = db.relationship('Show', backref='artist', lazy=True)
+
+    def __repr__(self):
+      return f'<Artist id: {self.id}, name: {self.name}>'
+
+    def json(self):
+      upcoming_shows = self.show.filter(Show.start_time > datetime.now()).all()
+      past_shows = self.show.filter(Show.start_time < datetime.now()).all()
+
+      return {
+        'id': self.id,
+        'name': self.name,
+        'city': self.city,
+        'state': self.state,
+        'phone': self.phone,
+        'genres': json.loads(self.genres),
+        'image_link': self.image_link,
+        'facebook_link': self.facebook_link,
+        'website': self.website,
+        'seeking_venue': self.seeking_venue,
+        'seeking_description': self.seeking_description,
+        'upcoming_shows_count': len(upcoming_shows),
+        'upcoming_shows': upcoming_shows,
+        'past_shows_count': len(past_shows),
+        'past_shows': past_shows,
+      }
 
     # TODO: implement any missing fields, as a database migration using Flask-Migrate
 
 # TODO Implement Show and Artist models, and complete all model relationships and properties, as a database migration.
+class Show(db.Model):
+  __tablename__ = 'shows'
+
+  id = db.Column(db.Integer, primary_key=True)
+  artist_id = db.Column(db.Integer, db.ForeignKey('artists.id', ondelete="CASCADE"), nullable=False)
+  venue_id = db.Column(db.Integer, db.ForeignKey('venues.id', ondelete="CASCADE"), nullable=False)
+  start_time = db.Column(db.DateTime, nullable=False)
+  artist = db.relationship("Artist", backref="show_artists", lazy=True)
+  venue = db.relationship("Venue", backref="show_venues", lazy=True)
+
+  def __repr__(self):
+    return f'<Show id: {self.id}, artist_id: {self.artist_id}, venue_id: {self.venue_id} start_time: {self.start_time}>'
 
 #----------------------------------------------------------------------------#
 # Filters.
@@ -429,45 +505,19 @@ def create_artist_submission():
 @app.route('/shows')
 def shows():
   # displays list of shows at /shows
-  # TODO: replace with real venues data.
-  #       num_shows should be aggregated based on number of upcoming shows per venue.
-  data=[{
-    "venue_id": 1,
-    "venue_name": "The Musical Hop",
-    "artist_id": 4,
-    "artist_name": "Guns N Petals",
-    "artist_image_link": "https://images.unsplash.com/photo-1549213783-8284d0336c4f?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=300&q=80",
-    "start_time": "2019-05-21T21:30:00.000Z"
-  }, {
-    "venue_id": 3,
-    "venue_name": "Park Square Live Music & Coffee",
-    "artist_id": 5,
-    "artist_name": "Matt Quevedo",
-    "artist_image_link": "https://images.unsplash.com/photo-1495223153807-b916f75de8c5?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=334&q=80",
-    "start_time": "2019-06-15T23:00:00.000Z"
-  }, {
-    "venue_id": 3,
-    "venue_name": "Park Square Live Music & Coffee",
-    "artist_id": 6,
-    "artist_name": "The Wild Sax Band",
-    "artist_image_link": "https://images.unsplash.com/photo-1558369981-f9ca78462e61?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=794&q=80",
-    "start_time": "2035-04-01T20:00:00.000Z"
-  }, {
-    "venue_id": 3,
-    "venue_name": "Park Square Live Music & Coffee",
-    "artist_id": 6,
-    "artist_name": "The Wild Sax Band",
-    "artist_image_link": "https://images.unsplash.com/photo-1558369981-f9ca78462e61?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=794&q=80",
-    "start_time": "2035-04-08T20:00:00.000Z"
-  }, {
-    "venue_id": 3,
-    "venue_name": "Park Square Live Music & Coffee",
-    "artist_id": 6,
-    "artist_name": "The Wild Sax Band",
-    "artist_image_link": "https://images.unsplash.com/photo-1558369981-f9ca78462e61?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=794&q=80",
-    "start_time": "2035-04-15T20:00:00.000Z"
-  }]
-  return render_template('pages/shows.html', shows=data)
+ 
+ data = []
+ shows = Show.query.all()
+ for show in shows:
+   data.append({
+     'venue_id': show.venue_id,
+     'venue_name': show.venue.name,
+     'artist_id': show.artist_id,
+     'artist_name': show.artist.name,
+     'artist_image_link': show.artist.image_link,
+     'start_time': show.start_time
+    })
+ return render_template('pages/shows.html', shows=data)
 
 @app.route('/shows/create')
 def create_shows():
@@ -478,13 +528,31 @@ def create_shows():
 @app.route('/shows/create', methods=['POST'])
 def create_show_submission():
   # called to create new shows in the db, upon submitting new show listing form
-  # TODO: insert form data as a new Show record in the db, instead
+ form=ShowForm()
+ start_time=form.start_time.data
+ artist_id=form.artist_id.data.strip()
+ venue_id=form.venue_id,data.strip()
+ error=False
+
+ try:
+   new_show = Show(start_time=start_time, artist_id=artist_id, venue_id=venue_id)
+   db.session.add(new_show)
+   db.session.commit()
+
+ except:
+   db.session.rollback()
+   error= True
+   print('error occured in create_show_submission()')
+   
+ finally:
+   db.session.close()
+
 
   # on successful db insert, flash success
-  flash('Show was successfully listed!')
-  # TODO: on unsuccessful db insert, flash an error instead.
-  # e.g., flash('An error occurred. Show could not be listed.')
-  # see: http://flask.pocoo.org/docs/1.0/patterns/flashing/
+  if error:
+    flash('An error occurred. Show could not be listed.')
+  else:
+    flash('Show was successfully listed!')
   return render_template('pages/home.html')
 
 @app.errorhandler(404)
